@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
@@ -94,40 +95,28 @@ public class BaseUserDetailsService implements UserDetailsService {
    * @return collection with user's roles
    */
   public static Collection<String> obtainRoles(String userName, boolean showErrorOutput) {
-    Collection<String> roles = new ArrayList<String>();
+    String command = String.format("aws iam list-groups-for-user --user-name %s", userName);
 
-    final String baseCommand = "aws iam list-groups-for-user --user-name";
-    String command = String.format("%s %s", baseCommand, userName);
-
-    BufferedReader reader = null;
     Process process;
     try {
-      process = Runtime.getRuntime().exec(command);
-      process.waitFor();
-      reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+      process = Runtime.getRuntime().exec(command).waitFor();
+    } catch (Exception exc_0) {
+      if (showErrorOutput) System.err.println("Couldn't even exec the process in OS console.");
+      if (process != null) process.destroy();
+      return null;
+    }
 
-      String line;
-      while ((line = reader.readLine()) != null) {
-        String theLine = line.trim();
-        if (theLine.startsWith("\"GroupName\": ")) {
-          String roleName = theLine.substring(14, theLine.length() - 1);
-          roles.add(roleName);
-        }
-      }
+    Collection<String> roles = null;
+    final String groupTag = "\"GroupName\": ";
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+        //"\"GroupName\": "group_exact_name" => group_exact_name
+        roles = reader.lines().
+          map(String::trim).
+          filter(value -> value.startsWith(groupTag)).
+          map(value -> value.substring.substring(groupTag.length(), value.length() - 1)).
+          collect(Collectors.toList());
     } catch (Exception exc_1) {
-      if (showErrorOutput) {
-        exc_1.printStackTrace();
-      }
-    } finally {
-      if (reader != null) {
-        try {
-          reader.close();
-        } catch (Exception exc_2) {
-          if (showErrorOutput) {
-            System.err.println("Couldn't even close the BufferedReader.");
-          }
-        }
-      }
+      if (showErrorOutput) exc_1.printStackTrace();
     }
 
     return roles;
